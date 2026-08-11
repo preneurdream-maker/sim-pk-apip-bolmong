@@ -1,7 +1,11 @@
-# Netlify Configuration — SIM-PK APIP (Next.js 16 App Router)
+# Netlify Configuration — SIM-PK APIP (Next.js App Router)
 
 [build]
   command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
 
 [build.environment]
   NODE_VERSION = "20"
