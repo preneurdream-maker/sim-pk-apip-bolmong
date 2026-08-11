@@ -1,0 +1,469 @@
+// Prisma Schema — SIM-PK APIP & e-Audit
+// Inspektorat Daerah Kab. Bolaang Mongondow
+// Landasan Regulasi: Peraturan BPKP No. 6 Tahun 2025
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────
+// USER & AUTHENTICATION
+// ─────────────────────────────────────────
+
+enum UserRole {
+  AUDITOR
+  KETUA_TIM
+  IRBAN
+  ADMIN
+  OPD
+  BPKP
+}
+
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  nip               String?   @unique
+  fullName          String
+  password          String    // bcrypt hash
+  role              UserRole  @default(AUDITOR)
+  opdName           String?   // diisi jika role = OPD
+  isActive          Boolean   @default(true)
+  isPasswordDefault Boolean   @default(true) // paksa ganti password saat pertama login
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  kkaCreated         KKA[]               @relation("KKACreatedBy")
+  kkaReviewed        KKAReview[]
+  engagements        AuditEngagement[]   @relation("EngagementAuditor")
+  qualityEvaluations QualityEvaluation[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────
+// AUDIT ENGAGEMENT (PIA / DPP / LHP)
+// ─────────────────────────────────────────
+
+enum EngagementType {
+  PIA
+  DPP
+  LHP
+}
+
+enum RiskLevel {
+  TINGGI
+  SEDANG
+  RENDAH
+}
+
+enum EngagementStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  SUBMITTED_TO_IRBAN
+}
+
+model AuditEngagement {
+  id             String           @id @default(cuid())
+  title          String
+  type           EngagementType   @default(PIA)
+  status         EngagementStatus @default(DRAFT)
+  strategicIssue String?
+  riskLevel      RiskLevel        @default(SEDANG)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  auditorId      String
+  auditor        User             @relation("EngagementAuditor", fields: [auditorId], references: [id])
+
+  kka                KKA[]
+  tlhpItems          TLHPItem[]
+  dpp                AuditDpp?
+  qualityEvaluations QualityEvaluation[]
+  pkaItems           PkaItem[]
+  lhpRecord          AuditLhp?
+
+  @@map("audit_engagements")
+}
+
+// ─────────────────────────────────────────
+// AUDIT DPP (Detail Perencanaan Penugasan & LHP Compiler)
+// ─────────────────────────────────────────
+
+model AuditDpp {
+  id           String          @id @default(cuid())
+  engagementId String          @unique
+  engagement   AuditEngagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  noSpt        String?
+  tglSpt       DateTime?
+  tujuan       String?         @db.Text
+  ruangLingkup String?         @db.Text
+  ringkasanLhp String?         @db.Text
+  submittedAt  DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@map("audit_dpp")
+}
+
+// ─────────────────────────────────────────
+// PKA (PROGRAM KERJA AUDIT)
+// ─────────────────────────────────────────
+
+model PkaItem {
+  id              String          @id @default(cuid())
+  engagementId    String
+  engagement      AuditEngagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  procedureName   String          @db.Text
+  assignedAuditor String?
+  status          String          @default("PLANNED") // PLANNED, IN_PROGRESS, COMPLETED
+  createdAt       DateTime        @default(now())
+
+  @@map("pka_items")
+}
+
+// ─────────────────────────────────────────
+// KKA (KERTAS KERJA AUDIT)
+// ─────────────────────────────────────────
+
+enum KKAStatus {
+  DRAFT
+  SUBMITTED
+  SUBMITTED_TO_KT
+  REVISION
+  REVISION_REQUESTED
+  APPROVED_BY_KETUA_TIM
+  APPROVED_BY_DALNIS
+  APPROVED
+}
+
+model KKA {
+  id              String      @id @default(cuid())
+  engagementId    String
+  engagement      AuditEngagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+
+  // 5 RCA Components
+  kondisi         String?     @db.Text
+  kriteria        String?     @db.Text
+  sebab           String?     @db.Text
+  akibat          String?     @db.Text
+  rekomendasi     String?     @db.Text
+
+  // Financial
+  nilaiKerugian   BigInt?     @default(0)
+
+  // Status & Signatures
+  status          KKAStatus   @default(DRAFT)
+  summaryNote     String?     @db.Text // Catatan ringkas saat minta revisi
+  auditorSignature String?
+  dalnisSignature  String?
+
+  createdById     String
+  createdBy       User        @relation("KKACreatedBy", fields: [createdById], references: [id])
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  // Relations
+  evidens          Eviden[]
+  reviews          KKAReview[]
+  qualityChecklist QualityChecklist?
+
+  @@map("audit_kka")
+}
+
+// ─────────────────────────────────────────
+// EVIDEN (File Attachments)
+// ─────────────────────────────────────────
+
+model Eviden {
+  id          String   @id @default(cuid())
+  kkaId       String
+  kka         KKA      @relation(fields: [kkaId], references: [id], onDelete: Cascade)
+  fileName    String   // validated against naming convention
+  fileSize    String
+  fileUrl     String?
+  uploadedAt  DateTime @default(now())
+
+  @@map("evidens")
+}
+
+// ─────────────────────────────────────────
+// KKA REVIEW NOTES (Berjenjang QA Threads)
+// ─────────────────────────────────────────
+
+enum SectionTag {
+  KONDISI
+  KRITERIA
+  SEBAB
+  AKIBAT
+  REKOMENDASI
+  EVIDEN
+  UMUM
+}
+
+enum NoteStatus {
+  OPEN
+  RESOLVED
+}
+
+model KKAReview {
+  id          String     @id @default(cuid())
+  kkaId       String
+  kka         KKA        @relation(fields: [kkaId], references: [id], onDelete: Cascade)
+  reviewerId  String
+  reviewer    User       @relation(fields: [reviewerId], references: [id])
+  sectionTag  SectionTag @default(UMUM)
+  note        String     @db.Text
+  status      NoteStatus @default(OPEN)
+  isResolved  Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+
+  @@map("kka_reviews")
+}
+
+// ─────────────────────────────────────────
+// DALNIS QUALITY CHECKLIST
+// ─────────────────────────────────────────
+
+model QualityChecklist {
+  id             String   @id @default(cuid())
+  kkaId          String   @unique
+  kka            KKA      @relation(fields: [kkaId], references: [id], onDelete: Cascade)
+  buktiLengkap   Boolean  @default(true)
+  rcaSesuai      Boolean  @default(true)
+  pkaSesuai      Boolean  @default(true)
+  dalnisNotes    String?  @db.Text
+  updatedAt      DateTime @updatedAt
+
+  @@map("quality_checklists")
+}
+
+// ─────────────────────────────────────────
+// OFFICIAL REGIONAL AUDIT LHP
+// ─────────────────────────────────────────
+
+model AuditLhp {
+  id              String          @id @default(cuid())
+  engagementId    String          @unique
+  engagement      AuditEngagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  noLhp           String          // e.g. 700/LHP-IRBAN1/02/2026
+  tglLhp          DateTime        @default(now())
+  wilayah         String          @default("Irban Wilayah I")
+  publishedToOpd  Boolean         @default(false)
+  approvedByIrban Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+
+  @@map("audit_lhps")
+}
+
+// ─────────────────────────────────────────
+// QUALITY EVALUATION (Evaluasi Mutu Penugasan)
+// ─────────────────────────────────────────
+
+model QualityEvaluation {
+  id               String          @id @default(cuid())
+  engagementId     String
+  engagement       AuditEngagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  evaluatorId      String
+  evaluator        User            @relation(fields: [evaluatorId], references: [id])
+  
+  // 1-5 Rating Sliders
+  buktiAuditScore  Int             @default(3) // 1-5
+  rcaScore         Int             @default(3) // 1-5
+  rekomendasiScore Int             @default(3) // 1-5
+  totalQualityScore Float          @default(0) // Automated calculated score (0-100)
+
+  notes            String?         @db.Text
+  createdAt        DateTime        @default(now())
+
+  @@map("quality_evaluations")
+}
+
+// ─────────────────────────────────────────
+// TLHP ITEMS & PROOFS (OPD e-TLHP Portal)
+// ─────────────────────────────────────────
+
+enum TLHPStatus {
+  BELUM_DITINDAKLANJUTI
+  BELUM_SESUAI
+  MENUNGGU_VERIFIKASI
+  SESUAI
+}
+
+model TLHPItem {
+  id                  String          @id @default(cuid())
+  engagementId        String?
+  engagement          AuditEngagement? @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+  recommendation      String          @db.Text
+  opdName             String
+  lhpOrigin           String?         @default("LHP Inspektorat 2026")
+  deadline            DateTime?
+  nilaiKerugian       BigInt?         @default(0)
+  nilaiSetorKerugian  BigInt?         @default(0)
+  status              TLHPStatus      @default(BELUM_DITINDAKLANJUTI)
+  opdNotes            String?         @db.Text
+  auditorVerification String?         @db.Text
+  updatedAt           DateTime        @updatedAt
+
+  proofs              TlhpProof[]
+
+  @@map("tlhp_items")
+}
+
+model TlhpProof {
+  id         String   @id @default(cuid())
+  tlhpId     String
+  tlhp       TLHPItem @relation(fields: [tlhpId], references: [id], onDelete: Cascade)
+  fileName   String
+  fileUrl    String?
+  fileSize   String
+  uploadedAt DateTime @default(now())
+
+  @@map("tlhp_proofs")
+}
+
+// ─────────────────────────────────────────
+// PUBLIC WHISTLEBOWING SYSTEM (WBS & Gratifikasi)
+// ─────────────────────────────────────────
+
+enum WbsCategory {
+  CORRUPTION_PUNGLI
+  GRATIFICATION
+  ABUSE_OF_POWER
+  SOP_VIOLATION
+}
+
+enum WbsStatus {
+  DITERIMA
+  DIPROSES
+  SELESAI
+  DITOLAK
+}
+
+model WbsReport {
+  id              String      @id @default(cuid())
+  ticketCode      String      @unique // e.g. WBS-2026-X98A
+  isAnonymous     Boolean     @default(false)
+  reporterName    String?
+  reporterContact String?
+  category        WbsCategory @default(CORRUPTION_PUNGLI)
+  title           String
+  description     String      @db.Text
+  evidenceUrl     String?
+  status          WbsStatus   @default(DITERIMA)
+  apipResponse    String?     @db.Text
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("wbs_reports")
+}
+
+// ─────────────────────────────────────────
+// PK APIP 5 ELEMEN & 19 TOPIK (Peraturan BPKP No. 6 Tahun 2025)
+// ─────────────────────────────────────────
+
+model PkTopic {
+  id          String   @id @default(cuid())
+  elementCode String   // E1, E2, E3, E4, E5
+  elementName String   // 1. Tata Kelola, 2. SDM, etc.
+  topicCode   String   @unique // T1, T2, ... T19
+  topicName   String
+  description String?  @db.Text
+
+  evidences    PkEvidence[]
+  assessments  PkAssessment[]
+  aoiItems     PkAreaOfImprovement[]
+
+  @@map("pk_topics")
+}
+
+model PkEvidence {
+  id          String   @id @default(cuid())
+  topicId     String
+  topic       PkTopic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  fileName    String
+  fileUrl     String?
+  fileSize    String   @default("1.5 MB")
+  version     Int      @default(1)
+  uploadedBy  String?
+  uploadedAt  DateTime @default(now())
+
+  @@map("pk_evidences")
+}
+
+enum ValidationStatus {
+  MEMENUHI
+  CUKUP
+  KURANG_BUKTI
+}
+
+model PkAssessment {
+  id               String           @id @default(cuid())
+  topicId          String           @unique
+  topic            PkTopic          @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  selfScore        Int              @default(3) // 1-5
+  bpkpScore        Int              @default(3) // 1-5
+  validationStatus ValidationStatus @default(MEMENUHI)
+  bpkpNotes        String?          @db.Text
+  evaluatorId      String?
+  updatedAt        DateTime         @updatedAt
+
+  @@map("pk_assessments")
+}
+
+enum AoiStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+}
+
+model PkAreaOfImprovement {
+  id         String    @id @default(cuid())
+  topicId    String
+  topic      PkTopic   @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  issue      String    @db.Text
+  actionPlan String    @db.Text
+  targetDate DateTime?
+  status     AoiStatus @default(OPEN)
+  updatedAt  DateTime  @updatedAt
+
+  @@map("pk_aoi_items")
+}
+
+// ─────────────────────────────────────────
+// SIM-SDM & JPL TRACKER AUDITOR
+// ─────────────────────────────────────────
+
+model AuditorSdm {
+  id         String   @id @default(cuid())
+  fullName   String
+  nip        String   @unique
+  rank       String   @default("Auditor Muda")
+  currentJpl Int      @default(0)
+  targetJpl  Int      @default(120)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  jplLogs    JplLog[]
+
+  @@map("auditor_sdm")
+}
+
+model JplLog {
+  id             String     @id @default(cuid())
+  auditorSdmId   String
+  auditorSdm     AuditorSdm @relation(fields: [auditorSdmId], references: [id], onDelete: Cascade)
+  trainingName   String
+  organizer      String
+  jplHours       Int
+  certificateUrl String?
+  tglDiklat      DateTime   @default(now())
+  createdAt      DateTime   @default(now())
+
+  @@map("jpl_logs")
+}
