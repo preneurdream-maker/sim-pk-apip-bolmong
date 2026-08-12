@@ -1,7 +1,14 @@
 // proxy.js — Route Protection by Role (Next.js 16)
-import { auth } from "@/lib/auth";
+// PENTING: sengaja TIDAK import dari "@/lib/auth" (itu menyeret Prisma +
+// bcryptjs lewat CredentialsProvider, yang tidak kompatibel dengan Edge
+// runtime tempat middleware ini jalan). Middleware hanya butuh verifikasi
+// JWT dari cookie, jadi cukup pakai authConfig yang ringan.
+import NextAuth from "next-auth";
+import { authConfig } from "@/lib/auth.config";
 import { NextResponse } from "next/server";
 import { getRoleDashboardPath } from "@/lib/utils";
+
+const { auth } = NextAuth(authConfig);
 
 // Routes yang bisa diakses publik (tanpa login)
 const PUBLIC_ROUTES = ["/login", "/wbs"];
