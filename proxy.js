@@ -18,6 +18,7 @@ const ROLE_ALLOWED_PATHS = {
   AUDITOR:   ["/auditor", "/workspace"],
   KETUA_TIM: ["/auditor", "/review", "/workspace"],
   IRBAN:     ["/auditor", "/review", "/dalnis", "/irban", "/workspace"],
+  INSPEKTUR: ["/auditor", "/review", "/dalnis", "/irban", "/workspace"],
   ADMIN:     ["/auditor", "/review", "/dalnis", "/irban", "/admin", "/opd", "/bpkp", "/workspace"],
   OPD:       ["/opd"],
   BPKP:      ["/bpkp", "/auditor"],

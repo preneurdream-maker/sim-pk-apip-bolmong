@@ -11,15 +11,54 @@ import {
 import { cn, ROLE_CONFIG } from "@/lib/utils";
 
 const NAV_ITEMS = {
-  dashboard:  { label: "Dashboard",     icon: LayoutDashboard, href: (r) => `/${r.toLowerCase()}/dashboard` },
-  kka:        { label: "KKA Editor",    icon: FileText,         href: () => "/auditor/kka" },
-  review:     { label: "Reviu KKA",     icon: ClipboardCheck,   href: () => "/dalnis/review" },
-  approval:   { label: "Persetujuan",   icon: CheckSquare,      href: () => "/irban/approval" },
-  users:      { label: "Kelola User",   icon: Users,            href: () => "/admin/users" },
-  repository: { label: "Repository PK",icon: FolderOpen,        href: () => "/repository" },
-  sdm:        { label: "Data SDM",      icon: BarChart3,        href: () => "/admin/sdm" },
-  tlhp:       { label: "Portal TLHP",  icon: ListChecks,        href: () => "/opd/tlhp" },
-  wbs:        { label: "Dashboard WBS", icon: BarChart3,        href: () => "/opd/wbs" },
+  dashboard: {
+    label: "Dashboard Utama",
+    icon: LayoutDashboard,
+    href: (r) => {
+      if (r === "ADMIN") return "/admin/pk-apip";
+      if (r === "KETUA_TIM") return "/workspace/ketua-tim";
+      if (r === "IRBAN") return "/workspace/irban-dalnis";
+      if (r === "INSPEKTUR") return "/workspace/inspektur";
+      if (r === "OPD") return "/opd/tlhp";
+      if (r === "BPKP") return "/bpkp/dashboard";
+      return "/auditor/dashboard";
+    }
+  },
+  kka: {
+    label: "KKA Editor & RCA",
+    icon: FileText,
+    href: () => "/auditor/kka/kka-1"
+  },
+  review: {
+    label: "Reviu KKA & PKA",
+    icon: ClipboardCheck,
+    href: () => "/review"
+  },
+  approval: {
+    label: "Persetujuan QC Irban",
+    icon: CheckSquare,
+    href: () => "/workspace/irban-dalnis"
+  },
+  repository: {
+    label: "Repository PK APIP",
+    icon: FolderOpen,
+    href: () => "/admin/pk-apip"
+  },
+  sdm: {
+    label: "Data SDM 120 JPL",
+    icon: BarChart3,
+    href: () => "/admin/pk-apip"
+  },
+  tlhp: {
+    label: "Portal e-TLHP OPD",
+    icon: ListChecks,
+    href: () => "/opd/tlhp"
+  },
+  wbs: {
+    label: "Portal WBS Public",
+    icon: ShieldCheck,
+    href: () => "/wbs"
+  },
 };
 
 export default function Sidebar() {
@@ -67,7 +106,7 @@ export default function Sidebar() {
             const item   = NAV_ITEMS[key];
             if (!item) return null;
             const href   = item.href(role);
-            const active = pathname.startsWith(href);
+            const active = pathname === href || (href !== "/" && pathname.startsWith(href));
             return (
               <li key={key}>
                 <Link
